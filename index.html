@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F&amp;O Tax Tracker</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1b1f24; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #2563eb; --green: #15803d; --red: #b91c1c;
+    --chip: #eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6;
+      --border: #2a2e36; --accent: #60a5fa; --green: #4ade80; --red: #f87171;
+      --chip: #1e2533;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > label { flex: 1 1 160px; }
+  label { display: block; font-size: 13px; color: var(--muted); }
+  input, select, button {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; width: 100%; margin-top: 4px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; cursor: pointer;
+    font-weight: 600; margin-top: 12px;
+  }
+  button.link {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    width: auto; padding: 4px 6px; margin: 0; font-size: 13px;
+  }
+  .chip {
+    display: inline-block; background: var(--chip); border-radius: 999px;
+    padding: 4px 10px; font-size: 13px; margin: 8px 6px 0 0;
+  }
+  .result { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 12px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 19px; font-weight: 700; margin-top: 2px; word-break: break-word; }
+  .green { color: var(--green); } .red { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: right; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .tablewrap { overflow-x: auto; }
+  .empty { color: var(--muted); text-align: center; padding: 16px; }
+  .note { font-size: 12.5px; color: var(--muted); }
+  .note li { margin-bottom: 4px; }
+  .actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  @media (max-width: 520px) {
+    .result { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>F&amp;O Profit Tax Tracker</h1>
+  <p class="sub" id="fyLabel"></p>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2>Your salary</h2>
+    <div class="row">
+      <label>Annual salary (CTC / gross) ₹
+        <input id="salary" type="number" min="0" step="10000" value="2500000">
+      </label>
+      <label>Tax regime
+        <select id="regime">
+          <option value="new">New regime (default)</option>
+          <option value="old">Old regime</option>
+        </select>
+      </label>
+      <label id="dedWrap" style="display:none">Other deductions (80C, 80D, HRA…) ₹
+        <input id="deductions" type="number" min="0" step="1000" value="0">
+      </label>
+    </div>
+    <div id="slabInfo"></div>
+  </div>
+
+  <!-- Entry -->
+  <div class="card">
+    <h2>Add today's profit</h2>
+    <div class="row">
+      <label>Date
+        <input id="date" type="date">
+      </label>
+      <label>Net profit / loss ₹ (use minus for loss)
+        <input id="profit" type="number" step="0.01" placeholder="e.g. 5000">
+      </label>
+    </div>
+    <button class="primary" id="addBtn">Calculate &amp; save</button>
+    <div id="todayResult"></div>
+  </div>
+
+  <!-- FY summary -->
+  <div class="card">
+    <h2>This financial year so far</h2>
+    <div class="result">
+      <div class="stat"><div class="k">Total F&amp;O profit</div><div class="v" id="sProfit">₹0</div></div>
+      <div class="stat"><div class="k">Tax on it</div><div class="v red" id="sTax">₹0</div></div>
+      <div class="stat"><div class="k">Profit after tax</div><div class="v green" id="sNet">₹0</div></div>
+    </div>
+    <p class="note" id="sNote" style="margin:10px 0 0"></p>
+  </div>
+
+  <!-- Entries -->
+  <div class="card">
+    <div class="actions">
+      <h2 style="margin:0">Daily entries</h2>
+      <div>
+        <button class="link" id="exportBtn">Export CSV</button>
+        <button class="link" id="clearBtn">Clear all</button>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Date</th><th>Profit</th><th>Tax</th><th>In hand</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card note">
+    <strong>How this is calculated</strong>
+    <ul>
+      <li>F&amp;O profit is <em>non-speculative business income</em>. It is added to your salary and taxed at your slab rate, not at a flat capital-gains rate.</li>
+      <li>Tax on F&amp;O = tax on (salary + F&amp;O) − tax on salary alone. So you see exactly the extra tax your trading creates.</li>
+      <li>Includes 4% health &amp; education cess, Section 87A rebate, and surcharge (with marginal relief) once total income crosses ₹50 lakh.</li>
+      <li>FY 2026-27 new regime slabs: 0–4L nil · 4–8L 5% · 8–12L 10% · 12–16L 15% · 16–20L 20% · 20–24L 25% · above 24L 30%. Standard deduction ₹75,000 (₹50,000 in old regime).</li>
+      <li>Enter <em>net</em> profit after brokerage and exchange charges. A net F&amp;O loss for the year can't reduce tax on your salary, so tax never goes below what you'd pay on salary alone.</li>
+      <li>Data is stored only in this browser. This is an estimate, not tax advice; check with a CA before filing (F&amp;O is reported in ITR-3, and advance tax may be due).</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Tax rules (FY 2026-27) ----------
+  var RULES = {
+    "new": {
+      stdDeduction: 75000,
+      slabs: [[400000, 0], [800000, 0.05], [1200000, 0.10], [1600000, 0.15],
+              [2000000, 0.20], [2400000, 0.25], [Infinity, 0.30]],
+      rebateLimit: 1200000, rebateMax: 60000,
+      surcharge: [[5000000, 0.10], [10000000, 0.15], [20000000, 0.25]]
+    },
+    "old": {
+      stdDeduction: 50000,
+      slabs: [[250000, 0], [500000, 0.05], [1000000, 0.20], [Infinity, 0.30]],
+      rebateLimit: 500000, rebateMax: 12500,
+      surcharge: [[5000000, 0.10], [10000000, 0.15], [20000000, 0.25], [50000000, 0.37]]
+    }
+  };
+  var CESS = 0.04;
+
+  function slabTax(income, slabs) {
+    var tax = 0, prev = 0;
+    for (var i = 0; i < slabs.length; i++) {
+      var top = slabs[i][0], rate = slabs[i][1];
+      if (income <= prev) break;
+      tax += (Math.min(income, top) - prev) * rate;
+      prev = top;
+    }
+    return tax;
+  }
+
+  function taxBeforeCess(income, r) {
+    var t = slabTax(income, r.slabs);
+    // Section 87A rebate (with marginal relief in the new regime)
+    if (income <= r.rebateLimit) {
+      t = Math.max(0, t - r.rebateMax);
+    } else if (r === RULES["new"]) {
+      t = Math.min(t, income - r.rebateLimit);
+    }
+    // Surcharge with marginal relief
+    var rate = 0, threshold = 0;
+    for (var i = 0; i < r.surcharge.length; i++) {
+      if (income > r.surcharge[i][0]) { threshold = r.surcharge[i][0]; rate = r.surcharge[i][1]; }
+    }
+    if (rate > 0) {
+      var withSur = t * (1 + rate);
+      var prevRate = 0;
+      for (var j = 0; j < r.surcharge.length; j++) {
+        if (r.surcharge[j][0] < threshold) prevRate = r.surcharge[j][1];
+      }
+      var atThreshold = slabTax(threshold, r.slabs) * (1 + prevRate);
+      t = Math.min(withSur, atThreshold + (income - threshold));
+    }
+    return t;
+  }
+
+  function totalTax(taxable, regime) {
+    var r = RULES[regime];
+    return Math.round(taxBeforeCess(Math.max(0, taxable), r) * (1 + CESS));
+  }
+
+  function marginalRate(taxable, regime) {
+    var slabs = RULES[regime].slabs, prev = 0;
+    for (var i = 0; i < slabs.length; i++) {
+      if (taxable < slabs[i][0]) return { rate: slabs[i][1], from: prev, to: slabs[i][0] };
+      prev = slabs[i][0];
+    }
+    return { rate: 0.30, from: prev, to: Infinity };
+  }
+
+  // ---------- Storage ----------
+  var KEY = "fno-tax-tracker-v1";
+  var state = { salary: 2500000, regime: "new", deductions: 0, entries: [] };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY));
+    if (saved && typeof saved === "object") state = Object.assign(state, saved);
+  } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  // ---------- Helpers ----------
+  var fmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  function money(n) { return fmt.format(Math.round(n)); }
+  function $(id) { return document.getElementById(id); }
+  function todayISO() {
+    var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+  }
+  function fyOf(iso) {
+    var y = +iso.slice(0, 4), m = +iso.slice(5, 7);
+    var start = m >= 4 ? y : y - 1;
+    return start + "-" + String((start + 1) % 100).padStart(2, "0");
+  }
+  var currentFY = fyOf(todayISO());
+
+  function salaryTaxable() {
+    var r = RULES[state.regime];
+    var ded = r.stdDeduction + (state.regime === "old" ? (+state.deductions || 0) : 0);
+    return Math.max(0, (+state.salary || 0) - Math.min(ded, +state.salary || 0));
+  }
+
+  // Walk entries of the current FY in date order; tax per entry is the change in total tax
+  function computeFY() {
+    var base = salaryTaxable();
+    var baseTax = totalTax(base, state.regime);
+    var list = state.entries
+      .filter(function (e) { return fyOf(e.date) === currentFY; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id; });
+    var cum = 0, prevTax = baseTax;
+    list.forEach(function (e) {
+      cum += e.profit;
+      var t = totalTax(base + Math.max(0, cum), state.regime);
+      e._tax = t - prevTax;
+      prevTax = t;
+    });
+    return { list: list, total: cum, tax: prevTax - baseTax, base: base, baseTax: baseTax };
+  }
+
+  // ---------- Render ----------
+  function renderSlab() {
+    var base = salaryTaxable();
+    var m = marginalRate(base, state.regime);
+    var eff = (m.rate * (1 + CESS) * 100).toFixed(1);
+    var range = m.to === Infinity ? "above " + money(m.from) : money(m.from) + " – " + money(m.to);
+    $("slabInfo").innerHTML =
+      '<span class="chip">Taxable salary: ' + money(base) + '</span>' +
+      '<span class="chip">Your slab: <strong>' + (m.rate * 100) + '%</strong> (' + range + ')</span>' +
+      '<span class="chip">Tax on salary: ' + money(totalTax(base, state.regime)) + '/yr</span>' +
+      '<span class="chip">Each extra ₹ of F&amp;O profit ≈ <strong>' + eff + '%</strong> tax</span>';
+  }
+
+  function renderAll() {
+    renderSlab();
+    var fy = computeFY();
+    $("sProfit").textContent = money(fy.total);
+    $("sProfit").className = "v " + (fy.total < 0 ? "red" : "");
+    $("sTax").textContent = money(fy.tax);
+    $("sNet").textContent = money(fy.total - fy.tax);
+    var pct = fy.total > 0 ? (fy.tax / fy.total * 100).toFixed(1) + "% effective rate on F&O profit. " : "";
+    $("sNote").textContent = pct + fy.list.length + " entr" + (fy.list.length === 1 ? "y" : "ies") + " in FY " + currentFY + ".";
+
+    var tbody = $("rows");
+    tbody.innerHTML = "";
+    if (!fy.list.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No entries yet. Add your first day above.</td></tr>';
+      return;
+    }
+    fy.list.slice().reverse().forEach(function (e) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + e.date + "</td>" +
+        '<td class="' + (e.profit < 0 ? "red" : "") + '">' + money(e.profit) + "</td>" +
+        "<td>" + money(e._tax) + "</td>" +
+        "<td>" + money(e.profit - e._tax) + "</td>" +
+        '<td><button class="link" data-id="' + e.id + '" aria-label="Delete">✕</button></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showToday(entry) {
+    var fy = computeFY();
+    var e = fy.list.filter(function (x) { return x.id === entry.id; })[0];
+    if (!e) { $("todayResult").innerHTML = ""; return; }
+    var lossNote = e._tax < 0 ? '<p class="note">This loss offsets tax on your earlier F&amp;O profits this year.</p>' : "";
+    $("todayResult").innerHTML =
+      '<div class="result">' +
+        '<div class="stat"><div class="k">Profit (' + e.date + ')</div><div class="v">' + money(e.profit) + '</div></div>' +
+        '<div class="stat"><div class="k">Tax on this</div><div class="v red">' + money(e._tax) + '</div></div>' +
+        '<div class="stat"><div class="k">You keep</div><div class="v green">' + money(e.profit - e._tax) + '</div></div>' +
+      '</div>' + lossNote;
+  }
+
+  // ---------- Events ----------
+  $("fyLabel").textContent = "Indian income tax · FY " + currentFY + " · F&O profit taxed as business income on top of salary";
+  $("salary").value = state.salary;
+  $("regime").value = state.regime;
+  $("deductions").value = state.deductions;
+  $("dedWrap").style.display = state.regime === "old" ? "" : "none";
+  $("date").value = todayISO();
+
+  $("salary").addEventListener("input", function () { state.salary = +this.value || 0; save(); renderAll(); });
+  $("deductions").addEventListener("input", function () { state.deductions = +this.value || 0; save(); renderAll(); });
+  $("regime").addEventListener("change", function () {
+    state.regime = this.value;
+    $("dedWrap").style.display = state.regime === "old" ? "" : "none";
+    save(); renderAll();
+  });
+
+  function add() {
+    var p = parseFloat($("profit").value);
+    var d = $("date").value || todayISO();
+    if (isNaN(p)) { $("profit").focus(); return; }
+    var entry = { id: Date.now(), date: d, profit: p };
+    state.entries.push(entry);
+    save(); renderAll(); showToday(entry);
+    $("profit").value = "";
+  }
+  $("addBtn").addEventListener("click", add);
+  $("profit").addEventListener("keydown", function (e) { if (e.key === "Enter") add(); });
+
+  $("rows").addEventListener("click", function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute("data-id");
+    if (!id) return;
+    state.entries = state.entries.filter(function (x) { return String(x.id) !== id; });
+    save(); renderAll(); $("todayResult").innerHTML = "";
+  });
+
+  $("clearBtn").addEventListener("click", function () {
+    if (!confirm("Delete all saved entries?")) return;
+    state.entries = []; save(); renderAll(); $("todayResult").innerHTML = "";
+  });
+
+  $("exportBtn").addEventListener("click", function () {
+    var fy = computeFY();
+    var csv = "Date,Profit,Tax,In hand\n" + fy.list.map(function (e) {
+      return [e.date, e.profit, e._tax, e.profit - e._tax].join(",");
+    }).join("\n");
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "fno-tax-FY" + currentFY + ".csv";
+    a.click();
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
